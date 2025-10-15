@@ -1,0 +1,12 @@
+hashlib
+json
+pathlib
+PyPDF2
+unstructured
+pdf2image
+pikepdf
+pytesseract
+pillow
+numpy
+opencv-python
+PyYAML
