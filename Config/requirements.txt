@@ -1,12 +1,33 @@
+# ===============================
+# PDF & Image Processing
+# ===============================
+PyPDF2>=3.0.0
+pytesseract
+pdf2image
+Pillow==9.5.0
+pikepdf
+opencv-python
+numpy
+matplotlib
+
+# ===============================
+# Document Layout & ML Extraction
+# ===============================
+unstructured[local-inference]
+detectron2 @ git+https://github.com/facebookresearch/detectron2.git@v0.6
+
+# ===============================
+# Utilities & Helpers
+# ===============================
+PyYAML
+pathlib
 hashlib
 json
-pathlib
-PyPDF2
-unstructured
-pdf2image
-pikepdf
-pytesseract
-pillow
-numpy
-opencv-python
-PyYAML
+uuid
+logging
+
+# ===============================
+# ⚙️ System Dependencies (install manually, not via pip)
+# ===============================
+# poppler-utils   ← required for pdf2image (install with apt / brew)
+# tesseract-ocr   ← required for pytesseract

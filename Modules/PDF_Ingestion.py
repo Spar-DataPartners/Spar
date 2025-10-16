@@ -1,23 +1,14 @@
 import os
-import hashlib
 import json
+import hashlib
+import logging
 from pathlib import Path
 from PyPDF2 import PdfReader
-
-# ========== CONFIG ==========
-# ROOT_DIR = r"C:\Users\optimal\Documents\Classification\data\Test_input"  # Main folder containing PDFs inside subfolders
-ROOT_DIR = r"Input_Folder_path"
-OUTPUT_METADATA = r"processed_jsonl\metadata.jsonl"
-ERROR_LOG = r"Tasks\logs\ingestion_errors.log"
-
-# Ensure output folders exist
-os.makedirs(os.path.dirname(OUTPUT_METADATA), exist_ok=True)
-os.makedirs(os.path.dirname(ERROR_LOG), exist_ok=True)
+from ..config import ROOT_DIR, OUTPUT_METADATA, ERROR_LOG
 
 
-
-def compute_hash(file_path):
-    """Compute SHA1 hash of file"""
+def compute_hash(file_path: Path) -> str:
+    """Compute SHA1 hash of a file for uniqueness checking."""
     sha1 = hashlib.sha1()
     with open(file_path, "rb") as f:
         while chunk := f.read(8192):
@@ -25,38 +16,40 @@ def compute_hash(file_path):
     return sha1.hexdigest()
 
 
-
-def process_pdf(file_path):
-    """Validate and extract metadata from PDF"""
+def process_pdf(file_path: Path):
+    """Validate and extract metadata (page count) from a PDF."""
     try:
         reader = PdfReader(file_path)
-        num_pages = len(reader.pages)  # If file invalid, this will raise error
+        num_pages = len(reader.pages)
         return num_pages
     except Exception as e:
-        return f"INVALID: {str(e)}"
+        logging.error(f"Invalid PDF {file_path}: {e}")
+        return None
 
 
-def main():
-    with open(OUTPUT_METADATA, "w", encoding="utf-8") as meta_file, \
-         open(ERROR_LOG, "w", encoding="utf-8") as error_file:
+def ingest_metadata():
+    """Walk through input directory, extract metadata, and save JSONL output."""
+    logging.basicConfig(filename=ERROR_LOG, level=logging.ERROR, format="%(asctime)s - %(message)s")
 
-        for root, dirs, files in os.walk(ROOT_DIR):
+    with open(OUTPUT_METADATA, "w", encoding="utf-8") as meta_file:
+        for root, _, files in os.walk(ROOT_DIR):
             for filename in files:
-                if filename.lower().endswith(".pdf"):
-                    file_path = os.path.join(root, filename)
-                    filesize = os.path.getsize(file_path)
-                    result = process_pdf(file_path)
+                if not filename.lower().endswith(".pdf"):
+                    continue
 
-                    if isinstance(result, int):  # Valid PDF
-                        metadata = {
-                            "filename": os.path.relpath(file_path, ROOT_DIR),
-                            "n_pages": result,
-                            "filesize": filesize,
-                            "hash": compute_hash(file_path)
-                        }
-                        meta_file.write(json.dumps(metadata) + "\n")
-                    else:
-                        error_file.write(f"{file_path} --> {result}\n")
+                file_path = Path(root) / filename
+                filesize = os.path.getsize(file_path)
+                n_pages = process_pdf(file_path)
 
-if __name__ == "__main__":
-    main()
+                if n_pages is not None:
+                    metadata = {
+                        "filename": str(Path(file_path).relative_to(ROOT_DIR)),
+                        "n_pages": n_pages,
+                        "filesize": filesize,
+                        "hash": compute_hash(file_path)
+                    }
+                    meta_file.write(json.dumps(metadata, ensure_ascii=False) + "\n")
+                else:
+                    logging.error(f"Failed to process: {file_path}")
+
+    print(f"✅ Metadata ingestion complete!\n→ Output: {OUTPUT_METADATA}\n→ Errors: {ERROR_LOG}")

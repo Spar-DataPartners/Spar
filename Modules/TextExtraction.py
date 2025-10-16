@@ -2,7 +2,6 @@ import os
 import json
 import uuid
 import logging
-from pathlib import Path
 
 import pytesseract
 from pdf2image import convert_from_path
@@ -12,23 +11,20 @@ try:
 except ImportError:
     PdfReader = None
 
-# ================= CONFIG =================
-DATA_DIR = r"Input Folder path"
-OUT_DIR = "processed_jsonl"
-LOG_DIR = "logs"
+from config import DATA_DIR, BLOCKS_FILE, DOCS_FILE, ERROR_LOG, OCR_DPI
 
-Path(OUT_DIR).mkdir(parents=True, exist_ok=True)
-Path(LOG_DIR).mkdir(parents=True, exist_ok=True)
-
-BLOCKS_FILE = os.path.join(OUT_DIR, "text_blocks.jsonl")
-DOCS_FILE = os.path.join(OUT_DIR, "text_docs.jsonl")
-ERROR_LOG = os.path.join(LOG_DIR, "text_extraction_errors.log")
-
+# =============== LOGGING SETUP =================
 logging.basicConfig(filename=ERROR_LOG, level=logging.ERROR)
 
 
-def extract_text_digital(pdf_path, page_num):
-    """Try extracting text using PyPDF2."""
+def extract_text_digital(pdf_path: str, page_num: int) -> str:
+    """
+    Try extracting text using PyPDF2 for a specific page.
+    """
+    if PdfReader is None:
+        logging.error("PyPDF2 not installed.")
+        return ""
+
     try:
         reader = PdfReader(pdf_path)
         page = reader.pages[page_num]
@@ -39,10 +35,17 @@ def extract_text_digital(pdf_path, page_num):
         return ""
 
 
-def extract_text_ocr(pdf_path, page_num):
-    """Fallback: use OCR via pdf2image + pytesseract."""
+def extract_text_ocr(pdf_path: str, page_num: int) -> str:
+    """
+    Fallback OCR text extraction using pytesseract + pdf2image.
+    """
     try:
-        images = convert_from_path(pdf_path, first_page=page_num + 1, last_page=page_num + 1, dpi=300)
+        images = convert_from_path(
+            pdf_path, 
+            first_page=page_num + 1,
+            last_page=page_num + 1,
+            dpi=OCR_DPI
+        )
         text = pytesseract.image_to_string(images[0])
         return text.strip()
     except Exception as e:
@@ -50,7 +53,10 @@ def extract_text_ocr(pdf_path, page_num):
         return ""
 
 
-def process_pdf(pdf_path, blocks_writer, docs_writer):
+def process_pdf(pdf_path: str, blocks_writer, docs_writer):
+    """
+    Process a single PDF file and extract text page-by-page.
+    """
     filename = os.path.basename(pdf_path)
     doc_id = uuid.uuid4().hex
 
@@ -58,6 +64,7 @@ def process_pdf(pdf_path, blocks_writer, docs_writer):
         logging.error("PyPDF2 not installed, cannot process digital text.")
         return
 
+    # Read number of pages
     try:
         reader = PdfReader(pdf_path)
         n_pages = len(reader.pages)
@@ -72,7 +79,7 @@ def process_pdf(pdf_path, blocks_writer, docs_writer):
     for i in range(n_pages):
         text = extract_text_digital(pdf_path, i)
 
-        if not text or len(text.split()) < 3:  # too short → OCR
+        if not text or len(text.split()) < 3:  # Too short → fallback to OCR
             text = extract_text_ocr(pdf_path, i)
             source = "ocr" if text else "error"
         else:
@@ -96,7 +103,6 @@ def process_pdf(pdf_path, blocks_writer, docs_writer):
                 "n_words": word_count
             }, ensure_ascii=False) + "\n")
 
-    # Save doc-level aggregate
     docs_writer.write(json.dumps({
         "doc_id": doc_id,
         "filename": filename,
@@ -109,11 +115,14 @@ def process_pdf(pdf_path, blocks_writer, docs_writer):
     }, ensure_ascii=False) + "\n")
 
 
-def main():
+def run_extraction(input_dir: str = DATA_DIR):
+    """
+    Run extraction for all PDFs in the input folder.
+    """
     with open(BLOCKS_FILE, "w", encoding="utf-8") as blocks_writer, \
          open(DOCS_FILE, "w", encoding="utf-8") as docs_writer:
 
-        for root, _, files in os.walk(DATA_DIR):
+        for root, _, files in os.walk(input_dir):
             for f in files:
                 if f.lower().endswith(".pdf"):
                     pdf_path = os.path.join(root, f)
@@ -127,4 +136,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    run_extraction()
